@@ -1,11 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-import { IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, RestApi } from 'aws-cdk-lib/aws-apigateway';
+import { IResource, LambdaIntegration, MockIntegration, PassthroughBehavior, RestApi, CognitoUserPoolsAuthorizer, AuthorizationType } from 'aws-cdk-lib/aws-apigateway';
 import { AttributeType, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { RemovalPolicy } from 'aws-cdk-lib';
 import { NodejsFunction, NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
-import { join } from 'path'
+import { join } from 'path';
+import * as cognito from 'aws-cdk-lib/aws-cognito';
 
 export class AwsCdkAppStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -27,6 +28,50 @@ export class AwsCdkAppStack extends cdk.Stack {
        */
       removalPolicy: RemovalPolicy.DESTROY, // NOT recommended for production code
     });
+    // Cognito User Pool
+    const userPool = new cognito.UserPool(this, 'TaskAppUserPool', {
+      signInAliases: { username: true, email: true },
+    });
+
+
+
+    // Cognito Authorizer for API Gateway
+    const auth = new CognitoUserPoolsAuthorizer(this, 'TaskAppAuthorizer', {
+      cognitoUserPools: [userPool],
+    });
+
+    // Create Resource Server 79tnr8b5btdsimm071hp66m26p
+    const resourceServer = new cognito.UserPoolResourceServer(this, 'ResourceServer', {
+      userPool: userPool,
+      identifier: 'https://api.sandpit2.com',
+      userPoolResourceServerName: 'MyResourceServer',
+      scopes: [
+        {
+          scopeName: 'read',
+          scopeDescription: 'Read access',
+        },
+        {
+          scopeName: 'write',
+          scopeDescription: 'Write access',
+        },
+      ],
+    });
+
+    const userPoolClient = new cognito.UserPoolClient(this, 'TaskAppUserPoolClient', {
+      userPool,
+      oAuth: {
+        callbackUrls: [
+          'https://api.sandpit2.com',
+        ],
+        logoutUrls: [
+          'https://api.sandpit2.com',
+        ],
+      },
+    });
+
+    // User URL to get the IDToken https://sandpit2.auth.ap-southeast-2.amazoncognito.com/login?response_type=token&client_id=557blnqcnp0r555sv908j9d5t4&redirect_uri=https://api.sandpit2.com
+    // Once id_token is copied, you can use it in API Authorization with header
+    // Authorization: Bearer <ID_TOKEN>
 
     const nodeJsFunctionProps: NodejsFunctionProps = {
       bundling: {
@@ -88,7 +133,10 @@ export class AwsCdkAppStack extends cdk.Stack {
 
     const items = api.root.addResource('items');
     items.addMethod('GET', getAllIntegration);
-    items.addMethod('POST', createOneIntegration);
+    items.addMethod('POST', createOneIntegration, {
+      authorizer: auth,
+      authorizationType: AuthorizationType.COGNITO,
+    });
     addCorsOptions(items);
 
     const singleItem = items.addResource('{id}');
