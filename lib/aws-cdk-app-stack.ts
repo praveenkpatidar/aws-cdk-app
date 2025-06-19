@@ -133,7 +133,9 @@ export class AwsCdkAppStack extends cdk.Stack {
 
     const items = api.root.addResource('items');
     items.addMethod('GET', getAllIntegration);
-    items.addMethod('POST', createOneIntegration, {
+    items.addMethod('POST', createOneIntegration);
+    // Sample for Auth Enablement
+    items.addMethod('PUT', createOneIntegration, {
       authorizer: auth,
       authorizationType: AuthorizationType.COGNITO,
     });
